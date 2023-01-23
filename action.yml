@@ -1,4 +1,5 @@
-name: Update dependencies using pipup
+name: pipup
+description: Update dependencies using pipup
 inputs:
   github_app_id:
     required: true
@@ -15,10 +16,18 @@ jobs:
       repos: ${{ steps.set-repos.outputs.repos }}
     steps:
       - uses: actions/checkout@v3
-      - {uses: actions/setup-python@v4, with: {python-version: '3.11'}}
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - id: set-repos
+
+      - name: Find all repos
+        id: set-repos
+        shell: bash
         run: echo "name=repos::'$(./get-repos.py --app-id '${{ inputs.github_app_id }}' --app-key '${{ inputs.github_app_key }}' --repo '${{ inputs.repo_name }}')'"  >> $GITHUB_OUTPUT
 
   pipup:
@@ -30,10 +39,19 @@ jobs:
         repo: ${{ fromJson(needs.lookup_targets.outputs.repos) }}
     steps:
       - uses: actions/checkout@v3
-      - {uses: actions/setup-python@v4, with: {python-version: '3.11'}}
-      - name: Install dependencies
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install local dependencies
+        shell: bash
         run: pip install -r requirements.txt
-      - id: repo
+
+      - name: Generate an access key for ${{ matrix.repo }}
+        id: repo
+        shell: bash
         run: |
           set -eo pipefail
           access_token=$(./generate-access-key.py --app-id '${{ inputs.github_app_id }}' --app-key '${{ inputs.github_app_key }}' --repo "${{ matrix.repo }}")
@@ -46,10 +64,17 @@ jobs:
           repository: '${{ matrix.repo }}'
           token: '${{ steps.repo.outputs.access_token }}'
 
-      - {uses: actions/setup-python@v4, with: {python-version: '3.11'}}
-      - run: pip install git+https://github.com/InfraBits/pipup.git@main
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install pipup
+        shell: bash
+        run: pip install git+https://github.com/InfraBits/pipup.git@main
 
       - name: Execute pipup
+        shell: bash
         run: |
           pipup \
           --merge \
