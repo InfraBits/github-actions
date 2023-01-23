@@ -1,4 +1,4 @@
-name: pipup
+name: pipup-action
 description: Update dependencies using pipup
 inputs:
   github_app_id:
