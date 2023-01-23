@@ -1,0 +1,60 @@
+name: Generate Github repo access token
+description: Generate Github repo access token
+
+inputs:
+  github_app_id:
+    description: Github App id
+    required: true
+  github_app_key:
+    description: Github App secret key
+    required: true
+  repo:
+    required: true
+    description: Name of repo to generate access token for
+
+outputs:
+  access_token:
+    description: "Github access token for repo"
+    value: ${{ steps.token.outputs.access_token }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: bearer
+      name: generate bearer token
+      shell: bash
+      run: |
+        unix_now=$(date +%s)
+        key=$(echo -n "${{ inputs.github_app_key }}" | base64 -d)
+
+        header='{"alg": "RS256", "typ": "JWT"}'
+        payload='{"iss": ${{ inputs.github_app_id }}, "iat": '$((${unix_now}-60))', "exp": '$((${unix_now}+600))'}'
+
+        header_base64=$(echo -n "${header}" | openssl base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
+        payload_base64=$(echo -n "${payload}" | openssl base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
+
+        content="${header_base64}.${payload_base64}"
+        signature=$(openssl dgst -sha256 -sign <(echo -n "${key}") <(echo -n "${content}") | openssl base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
+
+        echo "token=${content}.${signature}" >> $GITHUB_OUTPUT
+
+    - id: installation
+      name: find installation id
+      shell: bash
+      run: |
+        installation=$(curl -s \
+                        --fail \
+                        -H 'Authorization: Bearer ${{ steps.bearer.outputs.token }}' \
+                        https://api.github.com/repos/${{ inputs.repo }}/installation)
+        echo "id=$(echo "${installation}" | jq -r .id)" >> $GITHUB_OUTPUT
+
+    - id: token
+      name: generate access token
+      shell: bash
+      run: |
+        access_token=$(curl -s \
+                        --fail \
+                        -X POST \
+                        -H 'Authorization: Bearer ${{ steps.bearer.outputs.token }}' \
+                        https://api.github.com/app/installations/${{ steps.installation.outputs.id }}/access_tokens)
+        echo "access_token=$(echo "${access_token}" | jq -r .token)" >> $GITHUB_OUTPUT
