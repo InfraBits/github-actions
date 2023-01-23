@@ -1,0 +1,59 @@
+name: Update dependencies using pipup
+inputs:
+  github_app_id:
+    required: true
+  github_app_key:
+    required: true
+  repo_name:
+    required: false
+    default: ''
+
+jobs:
+  lookup_targets:
+    runs-on: ubuntu-20.04
+    outputs:
+      repos: ${{ steps.set-repos.outputs.repos }}
+    steps:
+      - uses: actions/checkout@v3
+      - {uses: actions/setup-python@v4, with: {python-version: '3.11'}}
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - id: set-repos
+        run: echo "name=repos::'$(./get-repos.py --app-id '${{ inputs.github_app_id }}' --app-key '${{ inputs.github_app_key }}' --repo '${{ inputs.repo_name }}')'"  >> $GITHUB_OUTPUT
+
+  pipup:
+    runs-on: ubuntu-20.04
+    needs: lookup_targets
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: ${{ fromJson(needs.lookup_targets.outputs.repos) }}
+    steps:
+      - uses: actions/checkout@v3
+      - {uses: actions/setup-python@v4, with: {python-version: '3.11'}}
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - id: repo
+        run: |
+          set -eo pipefail
+          access_token=$(./generate-access-key.py --app-id '${{ inputs.github_app_id }}' --app-key '${{ inputs.github_app_key }}' --repo "${{ matrix.repo }}")
+          echo "name=access_token::${access_token}" >> $GITHUB_OUTPUT
+
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          path: 'matrix-repo'
+          repository: '${{ matrix.repo }}'
+          token: '${{ steps.repo.outputs.access_token }}'
+
+      - {uses: actions/setup-python@v4, with: {python-version: '3.11'}}
+      - run: pip install git+https://github.com/InfraBits/pipup.git@main
+
+      - name: Execute pipup
+        run: |
+          pipup \
+          --merge \
+          --path 'matrix-repo' \
+          --repository '${{ matrix.repo }}' \
+          --github-app-id '${{ inputs.github_app_id }}' \
+          --github-app-key '${{ inputs.github_app_key }}'
