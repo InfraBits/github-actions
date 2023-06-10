@@ -1,0 +1,51 @@
+name: dockerup-action
+description: Update dependencies using dockerup
+inputs:
+  github_app_id:
+    description: Github App id
+    required: true
+  github_app_key:
+    description: Github App secret key
+    required: true
+  repo_name:
+    description: full name of a single repo to update
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v3
+
+    - name: Generate an access key for ${{ matrix.repo }}
+      id: repo
+      uses: InfraBits/github-actions/generate-access-token@main
+      with:
+        repo: ${{ matrix.repo }}
+        github_app_id: ${{ inputs.github_app_id }}
+        github_app_key: ${{ inputs.github_app_key }}
+
+    - name: Checkout repo
+      uses: actions/checkout@v3
+      with:
+        path: 'matrix-repo'
+        repository: '${{ matrix.repo }}'
+        token: '${{ steps.repo.outputs.access_token }}'
+
+    - name: Install Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dockerup
+      shell: bash
+      run: pip install git+https://github.com/InfraBits/dockerup.git@main
+
+    - name: Execute dockerup
+      shell: bash
+      run: |
+        dockerup \
+        --merge \
+        --path 'matrix-repo' \
+        --repository '${{ matrix.repo }}' \
+        --github-app-id '${{ inputs.github_app_id }}' \
+        --github-app-key '${{ inputs.github_app_key }}'
